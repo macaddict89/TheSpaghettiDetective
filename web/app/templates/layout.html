@@ -45,7 +45,7 @@
   {% with view_name=request.resolver_match.view_name %}
   <nav class="navbar navbar-expand-lg navbar-dark bg-dark static-top">
     <div class="container">
-      <a class="navbar-brand" href="https://www.thespaghettidetective.com/"><img src="{% static 'img/logo-inverted.png' %}"
+      <a class="navbar-brand" href="/"><img src="{% static 'img/logo-inverted.png' %}"
           style="height: 28px;" /></a>
       <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarResponsive" aria-controls="navbarResponsive"
         aria-expanded="false" aria-label="Toggle navigation">
@@ -54,7 +54,7 @@
       <div class="collapse navbar-collapse" id="navbarResponsive">
         <ul class="navbar-nav">
           <li class="nav-item">
-            <a class="nav-link" href="https://www.thespaghettidetective.com/">Home</a>
+            <a class="nav-link" href="/">Home</a>
           </li>
           <li class="nav-item dropdown">
             <a class="nav-link dropdown-toggle" data-toggle="dropdown" href="#" id="themes" aria-expanded="false">Help
@@ -65,7 +65,7 @@
             </div>
           </li>
           <li class="nav-item {% if view_name == 'publictimelapse_list' %}active{% endif %}">
-              <a class="nav-link glowing" href="/publictimelapses">Spaghetti Gallery</a>
+              <a class="nav-link glowing" href="https://app.thespaghettidetective.com/publictimelapses/publictimelapses">Spaghetti Gallery</a>
             </li>
         </ul>
         <ul class="navbar-nav ml-auto">
