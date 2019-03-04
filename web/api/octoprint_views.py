@@ -7,9 +7,12 @@ from rest_framework.parsers import MultiPartParser
 from django.conf import settings
 import requests
 import json
+import io
+from PIL import Image
 
 from lib.file_storage import save_file_obj
 from lib import redis
+from lib.image import overlay_detections
 from app.models import *
 from app.notifications import send_failure_alert
 from lib.prediction import update_prediction_with_detections, is_failing
@@ -48,20 +51,27 @@ class OctoPrintPicView(APIView):
         printer = request.auth
 
         pic = request.data['pic']
-        internal_url, external_url = save_file_obj('{}/{}.jpg'.format(printer.id, int(time.time())), pic, settings.PICS_CONTAINER)
-
-        redis.printer_pic_set(printer.id, {'img_url': external_url}, ex=STATUS_TTL_SECONDS)
+        internal_url, external_url = save_file_obj('raw/{}/{}.jpg'.format(printer.id, int(time.time())), pic, settings.PICS_CONTAINER)
 
         if not printer.is_printing():
+            redis.printer_pic_set(printer.id, {'img_url': external_url}, ex=STATUS_TTL_SECONDS)
             return command_response(printer)
 
         req = requests.get(settings.ML_API_HOST + '/p', params={'img': internal_url}, headers=ml_api_auth_headers(), verify=False)
         req.raise_for_status()
         resp = req.json()
 
+        detections = resp['detections']
         prediction = PrinterPrediction.objects.get(printer=printer)
-        update_prediction_with_detections(prediction, resp['detections'])
+        update_prediction_with_detections(prediction, detections)
         prediction.save()
+
+        pic.file.seek(0)  # Reset file object pointer so that we can load it again
+        tagged_img = io.BytesIO()
+        overlay_detections(Image.open(pic), detections).save(tagged_img, "JPEG")
+        tagged_img.seek(0)
+        internal_url, external_url = save_file_obj('tagged/{}/{}.jpg'.format(printer.id, int(time.time())), tagged_img, settings.PICS_CONTAINER)
+        redis.printer_pic_set(printer.id, {'img_url': external_url}, ex=STATUS_TTL_SECONDS)
 
         if is_failing(prediction, printer.detective_sensitivity):
             alert_if_needed(printer)
@@ -74,27 +84,46 @@ class OctoPrintStatusView(APIView):
 
     def post(self, request):
 
-        def file_printing(octoprint_data):
+        def file_printing(op_status, printer):
+            # Event, if present, should be used to determine the printing status
+            op_event = op_status.get('octoprint_event', {})
+            filename = (op_event.get('data') or {}).get('name')    # octoprint_event may be {'data': null, xxx}
+            if filename and op_event.get('event_type') == 'PrintStarted':
+                return filename, True, False
+            if filename and op_event.get('event_type') == 'PrintDone':
+                return filename, False, False
+            if filename and op_event.get('event_type') == 'PrintCancelled':
+                return filename, False, True
+
+            # No event. Fall back to using octoprint_data.
+            # But we wait for a period because octoprint_data can be out of sync with octoprint_event briefly and cause race condition
+            if (datetime.now(timezone.utc) - printer.print_status_updated_at).total_seconds() < 60:
+                return None, None, None
+
+            octoprint_data = op_status.get('octoprint_data', {})
+            filename = octoprint_data.get('job', {}).get('file', {}).get('name')
             printing = False
             flags = octoprint_data.get('state', {}).get('flags', {})
             for flag in ('cancelling', 'paused', 'pausing', 'printing', 'resuming', 'finishing'):
                 if flags.get(flag, False):
                     printing = True
 
-            filename = octoprint_data.get('job', {}).get('file', {}).get('name')
-            return filename, printing, octoprint_data.get('state', {}).get('text')
+            return filename, printing, False   # we can't derive from octoprint_data if the job was cancelled. Always return true.
 
         printer = request.auth
 
-        status = request.data
-        octo_data = status.get('octoprint_data', {})
-        filename, printing, text = file_printing(octo_data)
-        seconds_left = octo_data.get('progress', {}).get('printTimeLeft') or -1
+        octoprint_data = request.data.get('octoprint_data', {})
+        seconds_left = octoprint_data.get('progress', {}).get('printTimeLeft') or -1
 
-        redis.printer_status_set(printer.id, {'text': text, 'seconds_left': seconds_left}, ex=STATUS_TTL_SECONDS)
+        redis.printer_status_set(printer.id, {'text': octoprint_data.get('state', {}).get('text'), 'seconds_left': seconds_left}, ex=STATUS_TTL_SECONDS)
+
+        filename, printing, cancelled = file_printing(request.data, printer)
+        if printing is None:
+            return command_response(printer)
+
         if printing:
             printer.set_current_print(filename)
         else:
-            printer.unset_current_print()
+            printer.unset_current_print(cancelled)
 
         return command_response(printer)
