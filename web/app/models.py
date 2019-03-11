@@ -268,5 +268,15 @@ class Print(SafeDeleteModel):
     video_url = models.CharField(max_length=2000, null=True)
     tagged_video_url = models.CharField(max_length=2000, null=True)
     poster_url = models.CharField(max_length=2000, null=True)
+    prediction_json_url = models.CharField(max_length=2000, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def ended_at(self):
+        return self.cancelled_at or self.finished_at
+
+    def end_status(self):
+        return '(Cancelled)' if self.cancelled_at else ''
+
+    def duration(self):
+        return self.ended_at() - self.started_at

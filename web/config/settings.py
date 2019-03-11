@@ -33,6 +33,7 @@ ALLOWED_HOSTS = ['*']
 # Application definition
 
 INSTALLED_APPS = [
+    'channels',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -41,6 +42,9 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'django.contrib.sites',
     'django_extensions',
+    'django.contrib.humanize',
+    'hijack',
+    'compat',
     'simple_history',
     'widget_tweaks',
     'rest_framework',
@@ -90,6 +94,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'config.wsgi.application'
+ASGI_APPLICATION = 'config.routing.application'
 
 MESSAGE_TAGS = {
     messages.DEBUG: 'alert-info',
@@ -98,6 +103,8 @@ MESSAGE_TAGS = {
     messages.WARNING: 'alert-warning',
     messages.ERROR: 'alert-danger',
 }
+
+HIJACK_ALLOW_GET_REQUESTS = True
 
 # Database
 # https://docs.djangoproject.com/en/2.1/ref/settings/#databases
@@ -215,7 +222,6 @@ INTERNAL_MEDIA_HOST = os.environ.get('INTERNAL_MEDIA_HOST')
 PICS_CONTAINER = 'tsd-pics'
 TIMELAPSE_CONTAINER = 'tsd-timelapses'
 
-AZURE_STORAGE_CONNECTION_STRING = os.environ.get('AZURE_STORAGE_CONNECTION_STRING')
 GOOGLE_APPLICATION_CREDENTIALS = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
 BUCKET_PREFIX = os.environ.get('BUCKET_PREFIX')
 ML_API_HOST = os.environ.get('ML_API_HOST')
@@ -256,3 +262,13 @@ SETTINGS_EXPORT = [
 CELERY_BROKER_URL = REDIS_URL
 CELERY_RESULT_BACKEND = REDIS_URL
 CELERY_BROKER_TRANSPORT_OPTIONS = {'visibility_timeout': 3600*12}
+
+# Channels layers
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            "hosts": [REDIS_URL],
+        },
+    },
+}
